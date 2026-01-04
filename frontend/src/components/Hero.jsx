@@ -7,25 +7,20 @@ import HeroBg from '../assets/herobg2.jpg'
 
 const Hero = () => {
   const [movie, setMovie] = useState(null);
-  const options = {
-    method: 'GET',
-    headers: {
-      accept: 'application/json',
-      Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyODk5ZmJmYTk4OWY5YjlmOTJjNWYyYTVjNzExZjhhNiIsIm5iZiI6MTc2NjMzODI3NS45OTYsInN1YiI6IjY5NDgyZWUzNDkzNWIyZTMzMmZiMTFlNSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.1uCxRfRwaewJNY5IpKotduvdBYC7PQsuNiN9deCjNkw'
-    }
-  };
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
-    fetch('https://api.themoviedb.org/3/movie/upcoming?language=en-US&page=1', options)
+    // Calling our own backend instead of TMDB directly
+    fetch(`${API_URL}/api/category/upcoming`)
       .then(res => res.json())
       .then(res => {
-        if (res.results && res.results.length > 0) {
-          const randomIndex = Math.floor(Math.random() * res.results.length);
-          setMovie(res.results[randomIndex]);
+        if (res.content && res.content.length > 0) {
+          const randomIndex = Math.floor(Math.random() * res.content.length);
+          setMovie(res.content[randomIndex]);
         }
       })
-      .catch(err => console.error(err));
-  }, [])
+      .catch(err => console.error("Error fetching hero movie:", err));
+  }, [API_URL])
 
   if (!movie) {
     return <p>loading...</p>;

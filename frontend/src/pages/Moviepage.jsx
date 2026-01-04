@@ -8,37 +8,31 @@ const Moviepage = () => {
   const [movie, setMovie] = useState({});
   const [recommendations, setRecommendations] = useState([]);
   const [trailerKey, setTrailerKey] = useState(null);
-
-  const options = {
-    method: 'GET',
-    headers: {
-      accept: 'application/json',
-      Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyODk5ZmJmYTk4OWY5YjlmOTJjNWYyYTVjNzExZjhhNiIsIm5iZiI6MTc2NjMzODI3NS45OTYsInN1YiI6IjY5NDgyZWUzNDkzNWIyZTMzMmZiMTFlNSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.1uCxRfRwaewJNY5IpKotduvdBYC7PQsuNiN9deCjNkw'
-    }
-  };
-
-
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
-    fetch(`https://api.themoviedb.org/3/movie/${id}?language=en-US`, options)
+    // Detail
+    fetch(`${API_URL}/api/movie/${id}`)
       .then(res => res.json())
       .then(res => setMovie(res))
-      .catch(err => console.error(err));
+      .catch(err => console.error("Error fetching detail:", err));
 
-    fetch(`https://api.themoviedb.org/3/movie/${id}/recommendations?language=en-US&page=1`, options)
+    // Recommendations
+    fetch(`${API_URL}/api/movie/${id}/recommendations`)
       .then(res => res.json())
-      .then(res => setRecommendations(res.results))
-      .catch(err => console.error(err));
+      .then(res => setRecommendations(res.results || []))
+      .catch(err => console.error("Error fetching recommendations:", err));
 
-    fetch(`https://api.themoviedb.org/3/movie/${id}/videos?language=en-US`, options)
+    // Videos
+    fetch(`${API_URL}/api/movie/${id}/videos`)
       .then(res => res.json())
       .then(res => {
         const trailer = res.results?.find((vid) => vid.site === "YouTube" && vid.type === "Trailer");
         setTrailerKey(trailer?.key || null);
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error("Error fetching videos:", err));
 
-  }, [id])
+  }, [id, API_URL])
 
   if (!movie.title) {
     return <div className='flex items-center justify-center h-screen' >

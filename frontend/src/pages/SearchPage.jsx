@@ -15,8 +15,9 @@ const SearchPage = () => {
 
     const fetchMovies = async () => {
         setLoading(true);
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
         try {
-            const res = await fetch(`http://localhost:5000/api/search?q=${query}`);
+            const res = await fetch(`${API_URL}/api/search?q=${query}`);
             const data = await res.json();
             if (data.content) {
                 setMovies(data.content);

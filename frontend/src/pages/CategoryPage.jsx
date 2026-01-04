@@ -24,8 +24,9 @@ const CategoryPage = () => {
 
     const fetchItems = async () => {
         setLoading(true);
+        const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
         try {
-            const res = await fetch(`http://localhost:5000/api/category/${config.endpoint}?page=${page}`);
+            const res = await fetch(`${API_URL}/api/category/${config.endpoint}?page=${page}`);
             const data = await res.json();
             if (data.content) {
                 setItems(prev => page === 1 ? data.content : [...prev, ...data.content]);

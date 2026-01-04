@@ -14,34 +14,39 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const TMDB_TOKEN = process.env.TMDB_TOKEN;
 
 // Middleware
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
-
 app.use(cookieParser());
-app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }))
+app.use(cors({
+    origin: process.env.CLIENT_URL,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// Auth Helper for Cookies
+const setAuthCookie = (res, token) => {
+    res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production", // true in production
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // none for cross-domain in prod
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+};
 
 // Routes
 app.get("/", (req, res) => {
-    res.send("hello World");
+    res.send("Netflix Clone API is running");
 });
 
 app.post("/api/signup", async (req, res) => {
-    console.log("Signup req.body:", req.body);
-    if (!req.body || typeof req.body !== 'object') {
-        return res.status(400).json({ message: "Invalid request body" });
-    }
-    //expecting 3 thing from front end-> {username, email, password}
     const { username, email, password } = req.body;
     try {
         if (!username || !email || !password) {
-            throw new Error("All fields are required!");
-        }
-
-        // Check if DB is connected
-        if (mongoose.connection.readyState !== 1) {
-            throw new Error("Database connection failed. Please check MongoDB Atlas IP whitelist.");
+            return res.status(400).json({ message: "All fields are required!" });
         }
 
         const emailExist = await User.findOne({ email });
@@ -61,15 +66,9 @@ app.post("/api/signup", async (req, res) => {
             password: hashedPassword,
         });
 
-        //JWT
         if (userDoc) {
-            //jwt.sign(payload, secret,options)
             const token = jwt.sign({ id: userDoc._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-            res.cookie("token", token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict",
-            });
+            setAuthCookie(res, token);
         }
         return res.status(200).json({ user: userDoc, message: "user created successfully" });
     }
@@ -80,12 +79,7 @@ app.post("/api/signup", async (req, res) => {
 });
 
 app.post("/api/login", async (req, res) => {
-    console.log("Login req.body:", req.body);
-    if (!req.body || typeof req.body !== 'object') {
-        return res.status(400).json({ message: "Invalid request body" });
-    }
     const { username, password } = req.body;
-
     try {
         const userDoc = await User.findOne({ username });
         if (!userDoc) {
@@ -97,57 +91,50 @@ app.post("/api/login", async (req, res) => {
             return res.status(400).json({ message: "Invalid Password" });
         }
 
-        //JWT
         if (userDoc) {
-            //jwt.sign(payload, secret,options)
             const token = jwt.sign({ id: userDoc._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-            res.cookie("token", token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict",
-            });
+            setAuthCookie(res, token);
         }
         return res.status(200).json({ user: userDoc, message: "Logged In successfully" });
-
     }
     catch (error) {
         console.log("error Logging In: ", error.message)
         res.status(400).json({ message: error.message });
-
     }
-
 });
 
 app.get("/api/fetch-user", async (req, res) => {
     const { token } = req.cookies;
-    if (!token) {//check token
+    if (!token) {
         return res.status(400).json({ message: "NO token provided." });
     }
 
-    try {//decode token provided...is from JWT
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);//verify token by JWT
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         if (!decoded) {
             return res.status(401).json({ message: "Invalid token." })
         }
 
-        const userDoc = await User.findById(decoded.id).select("-password");//get user from DB by ID...is from JWT
+        const userDoc = await User.findById(decoded.id).select("-password");
         if (!userDoc) {
             return res.status(400).json({ message: "User not found." })
         }
         res.status(200).json({ user: userDoc });
     }
     catch (error) {
-        console.log("error fetching user : ", error.message);
         return res.status(400).json({ message: error.message })
     }
 });
 
-app.post("/api/logout", async (req, res) => {   //Log Out...clear cookie token  //JWT
-    res.clearCookie("token");
+app.post("/api/logout", async (req, res) => {
+    res.clearCookie("token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax"
+    });
     res.status(200).json({ message: "Logged Out successfully." });
 });
 
-//search API
 app.get("/api/search", async (req, res) => {
     try {
         const { q } = req.query;
@@ -156,7 +143,7 @@ app.get("/api/search", async (req, res) => {
         const response = await axios.get(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`, {
             headers: {
                 accept: 'application/json',
-                Authorization: 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyODk5ZmJmYTk4OWY5YjlmOTJjNWYyYTVjNzExZjhhNiIsIm5iZiI6MTc2NjMzODI3NS45OTYsInN1YiI6IjY5NDgyZWUzNDkzNWIyZTMzMmZiMTFlNSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.1uCxRfRwaewJNY5IpKotduvdBYC7PQsuNiN9deCjNkw'
+                Authorization: TMDB_TOKEN
             }
         });
 
@@ -172,8 +159,53 @@ app.get("/api/search", async (req, res) => {
     }
 });
 
-// Category API - handles different content types
-const TMDB_TOKEN = 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIyODk5ZmJmYTk4OWY5YjlmOTJjNWYyYTVjNzExZjhhNiIsIm5iZiI6MTc2NjMzODI3NS45OTYsInN1YiI6IjY5NDgyZWUzNDkzNWIyZTMzMmZiMTFlNSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.1uCxRfRwaewJNY5IpKotduvdBYC7PQsuNiN9deCjNkw';
+app.get("/api/movie/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.get(`https://api.themoviedb.org/3/movie/${id}?language=en-US`, {
+            headers: {
+                accept: 'application/json',
+                Authorization: TMDB_TOKEN
+            }
+        });
+        res.status(200).json(response.data);
+    } catch (error) {
+        console.log("error fetching movie detail: ", error.message);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+app.get("/api/movie/:id/videos", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.get(`https://api.themoviedb.org/3/movie/${id}/videos?language=en-US`, {
+            headers: {
+                accept: 'application/json',
+                Authorization: TMDB_TOKEN
+            }
+        });
+        res.status(200).json(response.data);
+    } catch (error) {
+        console.log("error fetching movie videos: ", error.message);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
+
+app.get("/api/movie/:id/recommendations", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const response = await axios.get(`https://api.themoviedb.org/3/movie/${id}/recommendations?language=en-US&page=1`, {
+            headers: {
+                accept: 'application/json',
+                Authorization: TMDB_TOKEN
+            }
+        });
+        res.status(200).json(response.data);
+    } catch (error) {
+        console.log("error fetching recommendations: ", error.message);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+});
 
 app.get("/api/category/:type", async (req, res) => {
     try {
@@ -189,7 +221,6 @@ app.get("/api/category/:type", async (req, res) => {
                 url = `https://api.themoviedb.org/3/movie/popular?language=en-US&page=${page}`;
                 break;
             case 'anime':
-                // Animation genre ID is 16
                 url = `https://api.themoviedb.org/3/discover/movie?with_genres=16&language=en-US&page=${page}`;
                 break;
             case 'popular':
@@ -221,7 +252,25 @@ app.get("/api/category/:type", async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    connectToDB();
-    console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Database connection helper
+const connectDB = async () => {
+    if (mongoose.connection.readyState === 1) return;
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log("MongoDB connected");
+    } catch (err) {
+        console.error("MongoDB connection error:", err.message);
+    }
+};
+
+// Start server or export for Vercel
+if (process.env.NODE_ENV !== 'production') {
+    connectDB();
+    app.listen(PORT, () => {
+        console.log(`Server is running on http://localhost:${PORT}`);
+    });
+} else {
+    connectDB();
+}
+
+export default app;
