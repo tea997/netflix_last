@@ -21,6 +21,18 @@ const TMDB_TOKEN = process.env.TMDB_TOKEN;
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+// Database Middleware for Serverless
+app.use(async (req, res, next) => {
+    if (mongoose.connection.readyState !== 1) {
+        try {
+            await connectToDB();
+        } catch (err) {
+            console.error("DB Middleware Error:", err.message);
+        }
+    }
+    next();
+});
+
 // Middleware
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
@@ -67,7 +79,8 @@ app.post("/api/signup", async (req, res) => {
         }
         return res.status(200).json({ user: userDoc, message: "user created successfully" });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Signup Error:", error.message);
+        res.status(500).json({ message: "Signup failed: " + error.message });
     }
 });
 
@@ -85,7 +98,8 @@ app.post("/api/login", async (req, res) => {
         }
         return res.status(200).json({ user: userDoc, message: "Logged In successfully" });
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error("Login Error:", error.message);
+        res.status(400).json({ message: "Login failed: " + error.message });
     }
 });
 
@@ -194,16 +208,8 @@ app.post("/api/ai-recommendation", async (req, res) => {
     }
 });
 
-const connectDB = async () => {
-    if (mongoose.connection.readyState === 1) return;
-    try { await mongoose.connect(process.env.MONGO_URI); } catch (err) { console.error(err.message); }
-};
-
 if (process.env.NODE_ENV !== 'production') {
-    connectDB();
     app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
-} else {
-    connectDB();
 }
 
 export default app;
