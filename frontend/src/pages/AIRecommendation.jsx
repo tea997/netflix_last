@@ -1,33 +1,17 @@
 import React, { useState } from "react";
 import { toast } from "react-hot-toast";
-import { getAIRecommendation } from "../lib/AIModel";
 import RecommendedMovies from "../components/RecommendedMovies";
 
 const steps = [
   {
     name: "genre",
     label: "What's your favorite genre?",
-    options: [
-      "Action",
-      "Comedy",
-      "Drama",
-      "Horror",
-      "Romance",
-      "Sci-Fi",
-      "Animation",
-    ],
+    options: ["Action", "Comedy", "Drama", "Horror", "Romance", "Sci-Fi", "Animation"],
   },
   {
     name: "mood",
     label: "What's your current mood?",
-    options: [
-      "Excited",
-      "Relaxed",
-      "Thoughtful",
-      "Scared",
-      "Inspired",
-      "Romantic",
-    ],
+    options: ["Excited", "Relaxed", "Thoughtful", "Scared", "Inspired", "Romantic"],
   },
   {
     name: "decade",
@@ -59,84 +43,67 @@ const AIRecommendations = () => {
 
   const handleOption = (value) => {
     setInputs({ ...inputs, [steps[step].name]: value });
-    console.log(inputs);
   };
 
   const handleNext = () => {
-    if (step < steps.length - 1) {
-      setStep(step + 1);
-    } else {
-      console.log(inputs);
-    }
+    if (step < steps.length - 1) setStep(step + 1);
   };
 
   const handleBack = () => {
-    if (step > 0) {
-      setStep(step - 1);
-    }
+    if (step > 0) setStep(step - 1);
   };
 
   const generateRecommendations = async () => {
-    if (!inputs) {
-      toast("Please enter your inputs.");
-    }
-
     setIsLoading(true);
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
     const userPrompt = `Given the following user inputs:
-
 - Decade: ${inputs.decade}
 - Genre: ${inputs.genre}
 - Language: ${inputs.language}
 - Length: ${inputs.length}
 - Mood: ${inputs.mood}
 
-Recommend 10 ${inputs.mood.toLowerCase()} ${
-      inputs.language
-    }-language ${inputs.genre.toLowerCase()} movies released in the ${
-      inputs.decade
-    } with a runtime between ${
-      inputs.length
-    }. Return the list as plain JSON array of movie titles only, No extra text, no explanations, no code blocks, no markdown, just the JSON array.
-    example:
-[
-  "Movie Title 1",
-  "Movie Title 2",
-  "Movie Title 3",
-  "Movie Title 4",
-  "Movie Title 5",
-  "Movie Title 6",
-  "Movie Title 7",
-  "Movie Title 8",
-  "Movie Title 9",
-  "Movie Title 10"
-]`;
+Recommend 10 ${inputs.mood.toLowerCase()} ${inputs.language}-language ${inputs.genre.toLowerCase()} movies released in the ${inputs.decade} with a runtime between ${inputs.length}. Return the list as plain JSON array of movie titles only, No extra text, no explanations, no code blocks, no markdown, just the JSON array.
+example:
+["Movie1", "Movie2"]`;
 
-    const result = await getAIRecommendation(userPrompt);
+    try {
+      const res = await fetch(`${API_URL}/api/ai-recommendation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: userPrompt })
+      });
+      const data = await res.json();
+      const result = data.recommendation;
 
-    setIsLoading(false);
-
-    if (result) {
-      const cleanedResult = result
-        .replace(/```json\n/i, "")
-        .replace(/\n```/i, "");
-      try {
-        const recommendationArray = JSON.parse(cleanedResult);
-        setRecommendation(recommendationArray);
-        console.log(recommendationArray);
-      } catch (error) {
-        console.log("Error: ", error);
+      if (result) {
+        const cleanedResult = result.replace(/```json\n/i, "").replace(/\n```/i, "").trim();
+        try {
+          const recommendationArray = JSON.parse(cleanedResult);
+          setRecommendation(recommendationArray);
+        } catch (error) {
+          console.error("JSON Parse Error:", error);
+          toast.error("Failed to parse AI output. Try again.");
+        }
+      } else {
+        toast.error("Failed to get recommendations.");
       }
-    } else {
-      toast.error("Failed to get recommendations.");
+    } catch (error) {
+      console.error("API Error:", error);
+      toast.error("Something went wrong. Please check your connection.");
+    } finally {
+      setIsLoading(false);
     }
   };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#181818] via-[#232323] to-[#181818] relative overflow-hidden">
       {!(recommendation && recommendation.length > 0) && (
         <img
           src="/background_banner.jpg"
           className="absolute inset-0 w-full h-full object-cover opacity-20 blur-[2px] "
+          alt="bg"
         />
       )}
 
@@ -158,7 +125,6 @@ Recommend 10 ${inputs.mood.toLowerCase()} ${
                 style={{ width: `${((step + 1) / steps.length) * 100}%` }}
               ></div>
             </div>
-
             <span className="ml-4 text-white text-sm font-semibold">
               {step + 1}/{steps.length}
             </span>
@@ -169,17 +135,15 @@ Recommend 10 ${inputs.mood.toLowerCase()} ${
               <h3 className=" text-lg font-semibold text-white mb-6 text-center">
                 {steps[step].label}
               </h3>
-
               <div className="grid grid-cols-1 gap-3">
                 {steps[step].options.map((opt) => (
                   <button
                     key={opt}
                     onClick={() => handleOption(opt)}
-                    className={`w-full py-3 rounded-xl border-2 transition font-semibold text-base flex items-center justify-center gap-2 focus:outline-none focus:ring-2 active:scale-95 duration-150 focus:ring-[#e50914] shadow-sm ${
-                      inputs[steps[step].name] == opt
+                    className={`w-full py-3 rounded-xl border-2 transition font-semibold text-base flex items-center justify-center gap-2 focus:outline-none focus:ring-2 active:scale-95 duration-150 focus:ring-[#e50914] shadow-sm ${inputs[steps[step].name] === opt
                         ? "bg-[#e50914] border-[#e50914] text-white shadow-lg"
                         : "bg-[#232323] border-[#444] text-white hover:bg-[#e50914]/80 hover:border-[#e50914]"
-                    }`}
+                      }`}
                   >
                     {opt}
                   </button>
@@ -191,22 +155,18 @@ Recommend 10 ${inputs.mood.toLowerCase()} ${
               <button
                 type="button"
                 onClick={handleBack}
-                disabled={step == 0}
+                disabled={step === 0}
                 className="px-6 py-2 rounded-lg font-semibold transition border-2 border-[#444] text-white bg-[#181818] hover:bg-[#232323]"
               >
                 Back
               </button>
               <button
                 type="button"
-                onClick={
-                  step === steps.length - 1
-                    ? generateRecommendations
-                    : handleNext
-                }
+                onClick={step === steps.length - 1 ? generateRecommendations : handleNext}
                 disabled={!inputs[steps[step].name] || isLoading}
                 className="px-6 py-2 rounded-lg font-semibold transition border-2 border-[#e50914] text-white bg-[#e50914] hover:bg-[#b0060f] ml-2"
               >
-                {step === steps.length - 1 ? "Finish" : "Next"}
+                {isLoading ? "Generating..." : step === steps.length - 1 ? "Finish" : "Next"}
               </button>
             </div>
           </div>
