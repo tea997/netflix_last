@@ -2,7 +2,7 @@ import { create } from "zustand"
 import axios from "axios";
 
 // Environment-based API URL
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
 axios.defaults.withCredentials = true;
 

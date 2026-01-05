@@ -55,7 +55,7 @@ const AIRecommendations = () => {
 
   const generateRecommendations = async () => {
     setIsLoading(true);
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
 
     const userPrompt = `Given the following user inputs:
 - Decade: ${inputs.decade}
@@ -141,8 +141,8 @@ example:
                     key={opt}
                     onClick={() => handleOption(opt)}
                     className={`w-full py-3 rounded-xl border-2 transition font-semibold text-base flex items-center justify-center gap-2 focus:outline-none focus:ring-2 active:scale-95 duration-150 focus:ring-[#e50914] shadow-sm ${inputs[steps[step].name] === opt
-                        ? "bg-[#e50914] border-[#e50914] text-white shadow-lg"
-                        : "bg-[#232323] border-[#444] text-white hover:bg-[#e50914]/80 hover:border-[#e50914]"
+                      ? "bg-[#e50914] border-[#e50914] text-white shadow-lg"
+                      : "bg-[#232323] border-[#444] text-white hover:bg-[#e50914]/80 hover:border-[#e50914]"
                       }`}
                   >
                     {opt}

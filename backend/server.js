@@ -19,7 +19,7 @@ const TMDB_TOKEN = process.env.TMDB_TOKEN;
 
 // Initialize Google GenAI
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
 // Middleware
 app.use(bodyParser.json());
@@ -166,8 +166,10 @@ app.get("/api/category/:type", async (req, res) => {
             case 'tv': url = `https://api.themoviedb.org/3/tv/popular?language=en-US&page=${page}`; break;
             case 'movies': url = `https://api.themoviedb.org/3/movie/popular?language=en-US&page=${page}`; break;
             case 'anime': url = `https://api.themoviedb.org/3/discover/movie?with_genres=16&language=en-US&page=${page}`; break;
-            case 'popular': url = `https://api.themoviedb.org/3/trending/all/week?language=en-US&page=${page}`; break;
+            case 'popular': url = `https://api.themoviedb.org/3/movie/popular?language=en-US&page=${page}`; break;
             case 'upcoming': url = `https://api.themoviedb.org/3/movie/upcoming?language=en-US&page=${page}`; break;
+            case 'top_rated': url = `https://api.themoviedb.org/3/movie/top_rated?language=en-US&page=${page}`; break;
+            case 'now_playing': url = `https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=${page}`; break;
             default: return res.status(400).json({ message: "Invalid category type" });
         }
         const response = await axios.get(url, {
