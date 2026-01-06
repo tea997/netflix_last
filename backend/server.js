@@ -1,48 +1,53 @@
+import "./loadEnv.js";
 import express from "express";
 import mongoose from "mongoose";
 import { connectToDB } from "./config/db.js";
-import dotenv from "dotenv";
 import User from "./models/user.model.js";
-import bcryptjs from "bcryptjs"
-import jwt from "jsonwebtoken"
-import bodyParser from "body-parser"
+import bcryptjs from "bcryptjs";
+import jwt from "jsonwebtoken";
+import bodyParser from "body-parser";
 import cookieParser from "cookie-parser";
-import cors from "cors"
+import cors from "cors";
 import axios from "axios";
+import axiosRetry from "axios-retry";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const TMDB_TOKEN = process.env.TMDB_TOKEN;
+const TMDB_TOKEN = (process.env.TMDB_TOKEN || "").trim();
 
-// Initialize Google GenAI
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-// Database Middleware for Serverless
-app.use(async (req, res, next) => {
-    if (mongoose.connection.readyState !== 1) {
-        try {
-            await connectToDB();
-        } catch (err) {
-            console.error("DB Middleware Error:", err.message);
-        }
-    }
-    next();
+// Configure Axios Retry
+axiosRetry(axios, {
+    retries: 3,
+    retryCondition: (error) => {
+        return axiosRetry.isNetworkOrIdempotentRequestError(error) || error.code === 'ECONNRESET';
+    },
+    retryDelay: axiosRetry.exponentialDelay
 });
 
-// Middleware
+console.log("TMDB_TOKEN loaded:", TMDB_TOKEN ? "Yes (starts with " + TMDB_TOKEN.substring(0, 10) + "...)" : "No");
+
+// Initialize Google GenAI - Using 1.5-flash-8b for faster responses
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENAI_API_KEY || "dummy_key");
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+// Middleware - Local Dev CORS Fix
+app.use(cors({
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5000"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
+}));
+
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(cors({
-    origin: process.env.CLIENT_URL,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"]
-}));
+
+// Request Logging Middleware
+app.use((req, res, next) => {
+    console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.url}`);
+    next();
+});
 
 // Auth Helper for Cookies
 const setAuthCookie = (res, token) => {
@@ -79,15 +84,18 @@ app.post("/api/signup", async (req, res) => {
         }
         return res.status(200).json({ user: userDoc, message: "user created successfully" });
     } catch (error) {
-        console.error("Signup Error:", error.message);
-        res.status(500).json({ message: "Signup failed: " + error.message });
+        res.status(500).json({ message: error.message });
     }
 });
 
 app.post("/api/login", async (req, res) => {
     const { username, password } = req.body;
     try {
-        const userDoc = await User.findOne({ username });
+        // Find user by username OR email
+        const userDoc = await User.findOne({
+            $or: [{ username: username }, { email: username }]
+        });
+
         if (!userDoc) return res.status(400).json({ message: "Invalid Credentials" });
         const isPasswordValid = bcryptjs.compareSync(password, userDoc.password);
         if (!isPasswordValid) return res.status(400).json({ message: "Invalid Password" });
@@ -98,14 +106,13 @@ app.post("/api/login", async (req, res) => {
         }
         return res.status(200).json({ user: userDoc, message: "Logged In successfully" });
     } catch (error) {
-        console.error("Login Error:", error.message);
-        res.status(400).json({ message: "Login failed: " + error.message });
+        res.status(400).json({ message: error.message });
     }
 });
 
 app.get("/api/fetch-user", async (req, res) => {
     const { token } = req.cookies;
-    if (!token) return res.status(400).json({ message: "NO token provided." });
+    if (!token) return res.status(401).json({ message: "No token provided." });
     try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const userDoc = await User.findById(decoded.id).select("-password");
@@ -129,8 +136,10 @@ app.get("/api/search", async (req, res) => {
     try {
         const { q } = req.query;
         if (!q) return res.status(400).json({ message: "Search Query is required" });
-        const response = await axios.get(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`, {
-            headers: { accept: 'application/json', Authorization: TMDB_TOKEN }
+        const url = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(q)}&include_adult=false&language=en-US&page=1`;
+
+        const response = await axios.get(url, {
+            headers: { 'accept': 'application/json', 'Authorization': TMDB_TOKEN }
         });
         return res.status(200).json({ content: response.data.results || [] });
     } catch (error) {
@@ -140,8 +149,9 @@ app.get("/api/search", async (req, res) => {
 
 app.get("/api/movie/:id", async (req, res) => {
     try {
-        const response = await axios.get(`https://api.themoviedb.org/3/movie/${req.params.id}?language=en-US`, {
-            headers: { accept: 'application/json', Authorization: TMDB_TOKEN }
+        const url = `https://api.themoviedb.org/3/movie/${req.params.id}?language=en-US`;
+        const response = await axios.get(url, {
+            headers: { 'accept': 'application/json', 'Authorization': TMDB_TOKEN }
         });
         res.status(200).json(response.data);
     } catch (error) {
@@ -151,8 +161,9 @@ app.get("/api/movie/:id", async (req, res) => {
 
 app.get("/api/movie/:id/videos", async (req, res) => {
     try {
-        const response = await axios.get(`https://api.themoviedb.org/3/movie/${req.params.id}/videos?language=en-US`, {
-            headers: { accept: 'application/json', Authorization: TMDB_TOKEN }
+        const url = `https://api.themoviedb.org/3/movie/${req.params.id}/videos?language=en-US`;
+        const response = await axios.get(url, {
+            headers: { 'accept': 'application/json', 'Authorization': TMDB_TOKEN }
         });
         res.status(200).json(response.data);
     } catch (error) {
@@ -162,8 +173,9 @@ app.get("/api/movie/:id/videos", async (req, res) => {
 
 app.get("/api/movie/:id/recommendations", async (req, res) => {
     try {
-        const response = await axios.get(`https://api.themoviedb.org/3/movie/${req.params.id}/recommendations?language=en-US&page=1`, {
-            headers: { accept: 'application/json', Authorization: TMDB_TOKEN }
+        const url = `https://api.themoviedb.org/3/movie/${req.params.id}/recommendations?language=en-US&page=1`;
+        const response = await axios.get(url, {
+            headers: { 'accept': 'application/json', 'Authorization': TMDB_TOKEN }
         });
         res.status(200).json(response.data);
     } catch (error) {
@@ -171,10 +183,23 @@ app.get("/api/movie/:id/recommendations", async (req, res) => {
     }
 });
 
+const categoryCache = new Map();
+
 app.get("/api/category/:type", async (req, res) => {
     try {
         const { type } = req.params;
         const { page = 1 } = req.query;
+        const cacheKey = `${type}-${page}`;
+
+        // Check Cache
+        if (categoryCache.has(cacheKey)) {
+            const { data, timestamp } = categoryCache.get(cacheKey);
+            if (Date.now() - timestamp < 5 * 60 * 1000) { // 5 min cache
+                console.log(`[BACKEND] Serving category ${type} from cache`);
+                return res.status(200).json(data);
+            }
+        }
+
         let url = '';
         switch (type) {
             case 'tv': url = `https://api.themoviedb.org/3/tv/popular?language=en-US&page=${page}`; break;
@@ -186,12 +211,46 @@ app.get("/api/category/:type", async (req, res) => {
             case 'now_playing': url = `https://api.themoviedb.org/3/movie/now_playing?language=en-US&page=${page}`; break;
             default: return res.status(400).json({ message: "Invalid category type" });
         }
+
+        console.log(`[BACKEND] Fetching category: ${type} (Page ${page})`);
+
         const response = await axios.get(url, {
-            headers: { accept: 'application/json', Authorization: TMDB_TOKEN }
+            headers: {
+                'accept': 'application/json',
+                'Authorization': TMDB_TOKEN
+            },
+            timeout: 20000
         });
-        return res.status(200).json({ content: response.data.results, page: response.data.page, totalPages: response.data.total_pages });
+
+        const data = response.data;
+        const responseData = {
+            content: data.results || [],
+            page: data.page,
+            totalPages: data.total_pages
+        };
+
+        // Update Cache
+        categoryCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+
+        return res.status(200).json(responseData);
     } catch (error) {
-        res.status(500).json({ message: "Internal Server Error" });
+        if (error.code === 'ECONNABORTED') {
+            console.error("[BACKEND] TMDB Request Timed Out (Axios)");
+            return res.status(504).json({ message: "Gateway Timeout - TMDB too slow" });
+        }
+        console.error("[BACKEND] Category Route Exception:", error.message);
+        if (error.response) {
+            console.error("[BACKEND] TMDB Error Status:", error.response.status);
+            console.error("[BACKEND] TMDB Error Data:", error.response.data);
+            return res.status(error.response.status).json({
+                message: "TMDB API Error",
+                error: error.response.data
+            });
+        }
+        res.status(500).json({
+            message: "Internal Server Error",
+            error: error.message
+        });
     }
 });
 
@@ -199,17 +258,35 @@ app.post("/api/ai-recommendation", async (req, res) => {
     try {
         const { prompt } = req.body;
         if (!prompt) return res.status(400).json({ message: "Prompt is required" });
+
+        if (!process.env.GOOGLE_GENAI_API_KEY || process.env.GOOGLE_GENAI_API_KEY.includes("AIzaSy...")) {
+            return res.status(500).json({ message: "Gemini API Key is missing or invalid" });
+        }
+
+        console.log(`[BACKEND] AI Request: ${prompt.substring(0, 50)}...`);
+
         const result = await model.generateContent(prompt);
-        const text = result.response.text();
+        const response = await result.response;
+        const text = response.text();
+
         res.status(200).json({ recommendation: text });
     } catch (error) {
-        console.error("AI Error:", error.message);
-        res.status(500).json({ message: "Internal Server Error" });
+        console.error("[BACKEND] AI Route Exception:", error.message);
+        res.status(500).json({
+            message: "AI Recommendation Failed",
+            error: error.message
+        });
     }
 });
 
-if (process.env.NODE_ENV !== 'production') {
-    app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
-}
+// Always connect and always listen in local development
+const server = app.listen(PORT, () => {
+    console.log(`🚀 Server is definitely running on http://localhost:${PORT}`);
+    connectToDB();
+});
+
+server.on('error', (err) => {
+    console.error("FAILED TO START SERVER:", err.message);
+});
 
 export default app;

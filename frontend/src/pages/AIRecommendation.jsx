@@ -55,7 +55,7 @@ const AIRecommendations = () => {
 
   const generateRecommendations = async () => {
     setIsLoading(true);
-    const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
     const userPrompt = `Given the following user inputs:
 - Decade: ${inputs.decade}

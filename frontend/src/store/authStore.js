@@ -2,7 +2,7 @@ import { create } from "zustand"
 import axios from "axios";
 
 // Environment-based API URL
-const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 axios.defaults.withCredentials = true;
 
@@ -61,12 +61,17 @@ export const useAuthStore = create((set) => ({
     fetchUser: async () => {
         set({ fetchingUser: true, error: null });
         try {
-            const response = await axios.get(`${API_URL}/api/fetch-user`);
-            set({ user: response.data.user, fetchingUser: false });
+            const response = await axios.get(`${API_URL}/api/fetch-user`, {
+                validateStatus: (status) => status < 500 // Don't throw for 4xx errors
+            });
+            if (response.status === 200) {
+                set({ user: response.data.user, fetchingUser: false });
+            } else {
+                set({ user: null, fetchingUser: false });
+            }
         }
         catch (error) {
             set({
-                isLoading: false,
                 fetchingUser: false,
                 user: null,
                 error: error.response?.data?.message || "Error fetching user"

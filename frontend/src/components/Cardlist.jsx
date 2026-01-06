@@ -9,7 +9,7 @@ import { Link } from 'react-router'
 
 const Cardlist = ({ title, category }) => {
   const [data, setData] = useState([]);
-  const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   useEffect(() => {
     // Calling our own backend instead of TMDB directly
